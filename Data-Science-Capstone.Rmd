@@ -1,0 +1,262 @@
+---
+title: "Data-Science-Capstone"
+author: "Qiang Wu"
+date: "2016/3/19"
+output: html_document
+---
+
+This is the resubmit my milestone project. In peer review, I got feedback that "too much code, too little explaination." So I am trying to explain what I am doing here. In fact, this is kind of standard text file process.
+
+# Introduction
+The goal of this Data Science Capstone milestone report is to: 
+1. Download the data and load in.
+2. Create a basic report of summary statistics about the data sets.
+3. Report any interesting findings
+4. Get feedback on plans for creating a prediction algorithm and Shiny app.
+
+# Load Data
+```{r, echo=TRUE, cache=TRUE, warning=FALSE}
+Sys.setlocale(category = "LC_ALL", local="English_United States.1252")
+library(tm)
+library(ggplot2)
+library(wordcloud)
+library(RWeka)
+library(quanteda)
+library(pryr)
+blogs<-readLines("en_US.blogs.txt", encoding="UTF-8")
+twitter<-readLines("en_US.twitter.txt", encoding="UTF-8")
+news<-readLines("en_US.news.txt", encoding="UTF-8")
+mem_used()
+```
+
+# fine how many lines in the file, longest line, and word count.
+Blogs
+```{r, echo=TRUE, cache=TRUE}
+system(paste("c:/Rtools/bin/wc.exe en_US.blogs.txt",sep=""), TRUE)
+```
+Twitter
+```{r, echo=TRUE, cache=TRUE}
+system(paste("c:/Rtools/bin/wc.exe en_US.twitter.txt",sep=""), TRUE)
+```
+News
+```{r, echo=TRUE, cache=TRUE}
+system(paste("c:/Rtools/bin/wc.exe en_US.news.txt",sep=""), TRUE)
+```
+
+# The data is too big, have to sample them. My laptop couldn't process the whole data. Also remove special non english character in files.
+1. Sample 1/10 data.
+2. Remove any non number and non letter character.
+```{r, echo=TRUE, cache=TRUE}
+twitter <- sample(twitter, size = round(length(twitter)/10))
+twitter<-gsub("[^0-9A-Za-z///' ]", "", twitter)
+blogs <- sample(blogs, size = round(length(blogs)/10))
+blogs<-gsub("[^0-9A-Za-z///' ]", "", blogs)
+news <- sample(news, size = round(length(news)/10))
+news<-gsub("[^0-9A-Za-z///' ]", "", news)
+```
+
+# Change data to Corpus
+Start processing by use tm library. Change file to corpus.
+```{r, echo=TRUE, cache=TRUE}
+news_corpus<-Corpus(VectorSource(news))
+twitter_corpus<-Corpus(VectorSource(twitter))
+blog_corpus<-Corpus(VectorSource(blogs))
+```
+
+# Clean data. 
+I notice that there is some not english character in twitter. Need to clean it before tolower.
+1. Remove punctuation
+2. Remove numbers.
+3. Change all character to lower case.
+4. Remove all english stop words.
+5. Strip white space, this should be the last step.
+6. Set the corpus to plain text document.
+```{r, echo=TRUE, cache=TRUE}
+news_corpus<-tm_map(news_corpus, removePunctuation)
+news_corpus<-tm_map(news_corpus,removeNumbers)
+news_corpus<-tm_map(news_corpus,tolower)
+#news_corpus<-tm_map(news_corpus,removeWords,stopwords("english"))
+news_corpus<-tm_map(news_corpus,stripWhitespace)
+news_corpus<-tm_map(news_corpus, PlainTextDocument)
+
+blog_corpus<-tm_map(blog_corpus, removePunctuation)
+blog_corpus<-tm_map(blog_corpus,removeNumbers)
+blog_corpus<-tm_map(blog_corpus,tolower)
+#blog_corpus<-tm_map(blog_corpus,removeWords,stopwords("english"))
+blog_corpus<-tm_map(blog_corpus,stripWhitespace)
+blog_corpus<-tm_map(blog_corpus, PlainTextDocument)
+
+twitter_corpus<-tm_map(twitter_corpus, removePunctuation)
+twitter_corpus<-tm_map(twitter_corpus,removeNumbers)
+twitter_corpus<-tm_map(twitter_corpus,tolower)
+#twitter_corpus<-tm_map(twitter_corpus,removeWords,stopwords("english"))
+twitter_corpus<-tm_map(twitter_corpus,stripWhitespace)
+twitter_corpus<-tm_map(twitter_corpus, PlainTextDocument)
+```
+
+# Combine all corpus to one to process.
+From http://tm.r-forge.r-project.org/faq.html
+Combine all corpus to one to process.
+```{r, echo=TRUE, cache=TRUE}
+all_corpus<-c(blog_corpus, twitter_corpus,news_corpus)
+rm(blog_corpus)
+rm(twitter_corpus)
+rm(news_corpus)
+```
+
+# Plot
+Change the corpus to DocumentTermMatrix
+Remove sparse terms.
+Plot freq.
+Play with word cloud.
+```{r, echo=TRUE, cache=TRUE, warning=FALSE}
+dtm <- DocumentTermMatrix(all_corpus)
+d<-removeSparseTerms(dtm,0.998)
+freq<-sort (colSums (as.matrix(d)), decreasing =TRUE)
+head(freq[1:20])
+word_freq<-data.frame (word=names(freq), freq=freq)
+ggplot(word_freq[1:10,],aes(x=reorder(word,freq),y=freq)) + geom_bar(stat="identity") +xlab("Word") + ylab("Frequency")
+wordcloud(names(freq), freq, min.freq=0.999)
+```
+
+# Plot 2 tokens
+Use 2 NGramTokenizer to generate tokenizer then reapply above steps.
+```{r, echo=TRUE, cache=TRUE, warning=FALSE}
+BigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
+dtm2 <- DocumentTermMatrix(all_corpus, control = list(tokenize = BigramTokenizer))
+d2<-removeSparseTerms(dtm2,0.9985)
+freq2<-sort (colSums (as.matrix(d2)), decreasing =TRUE)
+head(freq2[1:20])
+word_freq2<-data.frame (word=names(freq2), freq=freq2)
+ggplot(word_freq2[1:10,],aes(x=reorder(word,freq),y=freq)) + geom_bar(stat="identity") +xlab("Word") + ylab("Frequency")
+wordcloud(names(freq2), freq2, min.freq=0.999)
+```
+
+# Plot 3 tokens
+Use 3 NGramTokenizer to generate tokenizer then reapply above steps.
+```{r, echo=TRUE, cache=TRUE, warning=FALSE}
+TrigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 3, max = 3))
+dtm3 <- DocumentTermMatrix(all_corpus, control = list(tokenize = TrigramTokenizer))
+d3<-removeSparseTerms(dtm3,0.99962)
+freq3<-sort (colSums (as.matrix(d3)), decreasing =TRUE)
+head(freq3[1:20])
+word_freq3<-data.frame (word=names(freq3), freq=freq3)
+ggplot(word_freq3[1:10,],aes(x=reorder(word,freq),y=freq)) + geom_bar(stat="identity") +xlab("Word") + ylab("Frequency")
+wordcloud(names(freq3), freq3, min.freq=0.999)
+```
+
+# Plot 4 tokens
+```{r, echo=TRUE, cache=TRUE, warning=FALSE}
+QuadgramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 4, max = 4))
+dtm4 <- DocumentTermMatrix(all_corpus, control = list(tokenize = QuadgramTokenizer))
+d4<-removeSparseTerms(dtm4,0.9999)
+freq4<-sort (colSums (as.matrix(d4)), decreasing =TRUE)
+head(freq4[1:20])
+word_freq4<-data.frame (word=names(freq4), freq=freq4)
+ggplot(word_freq4[1:10,],aes(x=reorder(word,freq),y=freq)) + geom_bar(stat="identity") +xlab("Word") + ylab("Frequency")
+wordcloud(names(freq4), freq4, min.freq=0.999)
+```
+
+# Try to answer following questions:
+
+## 1 Some words are more frequent than others - what are the distributions of word frequencies?
+```{r, echo=TRUE, cache=TRUE}
+quantile(freq)
+```
+
+## 2 What are the frequencies of 2-grams and 3-grams in the dataset?
+```{r, echo=TRUE, cache=TRUE}
+quantile(freq2)
+quantile(freq3)
+quantile(freq4)
+```
+
+## 3 How many unique words do you need in a frequency sorted dictionary to cover 50% of all word instances in the language? 90%? TBD
+
+## 4 How do you evaluate how many of the words come from foreign languages? TBD
+
+## 5 Can you think of a way to increase the coverage -- identifying words that may not be in the corpora or using a smaller number of words in the dictionary to cover the same number of phrases? TBD
+
+```{r, echo=TRUE, cache=TRUE}
+library(stringr)
+f <- function(fr, query_s, n) {
+  require(tau)
+  query<-str_replace_all(query_s,"[[:punct:]]","")
+  query<-tolower(query)
+  query<-gsub('[0-9]+', '', query)
+  query_l<-unlist(strsplit(query, " +"))
+  if (length(query_l) < n) {
+    return ("")
+  }
+  query<-paste(query_l[(length(query_l)-n+1):length(query_l)], collapse = " ")
+  s<-names(fr)
+  if (length(s) <= 0) {
+    return ("")
+  }
+  if (length(unlist(strsplit(s[1], " +"))) <= n) {
+    return ("")
+  }
+  temp<-s
+  for (i in 1:length(s)) {
+    temp[i]<-unlist(strsplit(s[i], " +"))
+    temp[i]<-paste(temp[(length(temp)-n):(length(temp)-1)], collapse = " ")
+  }
+  i<-temp==query
+  return (i)
+}
+```
+
+#Test with my function
+```{r, echo=TRUE, warning=FALSE}
+s<-"The guy in front of me just bought a pound of bacon, a bouquet, and a case of"
+f(freq3, s, 2)
+f(freq2, s, 1)
+ s<-"You're the reason why I smile everyday. Can you follow me please? It would mean the"
+f(freq3, s, 2)
+f(freq2, s, 1)
+s<-"Hey sunshine, can you follow me and make me the"
+f(freq3, s, 2)
+f(freq2, s, 1)
+ s<-"Very early observations on the Bills game: Offense still struggling but the"
+f(freq3, s, 2)
+f(freq2, s, 1)
+s<-"Go on a romantic date at the"
+f(freq3, s, 2)
+f(freq2, s, 1)
+s<-"Well I'm pretty sure my granny has some old bagpipes in her garage I'll dust them off and be on my"
+f(freq3, s, 2)
+f(freq2, s, 1)
+s<-"Ohhhhh #PointBreak is on tomorrow. Love that film and haven't seen it in quite some"
+f(freq3, s, 2)
+f(freq2, s, 1)
+s<-"After the ice bucket challenge Louis will push his long wet hair out of his eyes with his little"
+f(freq3, s, 2)
+f(freq2, s, 1)
+s<-"Be grateful for the good times and keep the faith during the"
+f(freq3, s, 2)
+f(freq2, s, 1)
+s<-"If this isn't the cutest thing you've ever seen, then you must be"
+f(freq3, s, 2)
+f(freq2, s, 1)
+
+s<-"When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd"
+"die"
+s<-"Guy at my table's wife got up to go to the bathroom and I asked about dessert and he started telling me about his"
+"marital"
+s<-"I'd give anything to see arctic monkeys this"
+"month"
+s<-"Talking to your mom has the same effect as a hug and helps reduce your"
+"stress"
+s<-"When you were in Holland you were like 1 inch away from me but you hadn't time to take a"
+"picture"
+s<-"I'd just like all of these questions answered, a presentation of evidence, and a jury to settle the"
+s<-"I can't deal with unsymetrical things. I can't even hold an uneven number of bags of groceries in each"
+"hands"
+s<-"Every inch of you is perfect from the bottom to the"
+"top"
+s<-"I¡¯m thankful my childhood was filled with imagination and bruises from playing"
+"outside"
+s<-"
+I like how the same people are in almost all of Adam Sandler's"
+"movie"
+```
